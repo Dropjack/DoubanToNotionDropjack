@@ -1,0 +1,2 @@
+# DoubanToNotionDropjack
+不需要模板就可以把豆瓣的信息填入notion的资料库（notion表格）里
