@@ -110,6 +110,10 @@ def fetch_book_from_douban(isbn: str) -> Dict[str, Any]:
     pubdate_raw: Optional[str] = None
     authors: List[str] = []
     translators: List[str] = []
+    pages: Optional[str] = None
+    producer: Optional[str] = None   # 出品方 / 出品人
+    binding: Optional[str] = None    # 封面类型
+
 
     for span in labels:
         label_text = span.get_text(strip=True)  # 例如："作者", "出版社:", "出版年:"
@@ -155,6 +159,14 @@ def fetch_book_from_douban(isbn: str) -> Dict[str, Any]:
             publisher = collapse_spaces(raw_value)
         elif label.startswith("出版年"):
             pubdate_raw = raw_value
+        elif label.startswith("出品方"):
+            producer = collapse_spaces(raw_value)
+        elif label.startswith("装帧"):
+            binding = collapse_spaces(raw_value)
+        elif label.startswith("页数"):
+            # 页数通常是数字，有时可能带“页”
+            pages_text = collapse_spaces(raw_value)
+            pages = re.sub(r"\D+", "", pages_text)  # 提取纯数字
 
     book_data: Dict[str, Any] = {
         "title": title,
@@ -162,6 +174,9 @@ def fetch_book_from_douban(isbn: str) -> Dict[str, Any]:
         "author": authors,
         "translator": translators,
         "pubdate": pubdate_raw,
+        "producer": producer,
+        "binding": binding,
+        "pages": pages,
     }
 
     return book_data
@@ -239,9 +254,30 @@ def date_property(date_str: Optional[str]) -> Dict[str, Any]:
     return {"date": {"start": date_str}}
 
 
+def number_property(value: Optional[str]) -> Dict[str, Any]:
+    """
+    Notion 数字类型字段。
+    """
+    if not value:
+        return {"number": None}
+    try:
+        return {"number": int(value)}
+    except ValueError:
+        return {"number": None}
+        
+        
+def select_property(value: Optional[str]) -> Dict[str, Any]:
+    """
+    Notion 单选（select）类型字段。
+    """
+    if not value:
+        return {"select": None}
+    return {"select": {"name": value}}
+
+
 def build_notion_properties(book: Dict[str, Any]) -> Dict[str, Any]:
     """
-    根据豆瓣解析结果，构造 Notion properties，只写 5 个字段。
+    根据豆瓣解析结果，构造 Notion properties。
     """
     title = book.get("title") or ""
 
@@ -255,12 +291,21 @@ def build_notion_properties(book: Dict[str, Any]) -> Dict[str, Any]:
     pubdate_raw = book.get("pubdate")
     pubdate = convert_pubdate(pubdate_raw)
 
+    # 页数字符串（可能为空）
+    pages_raw = book.get("pages")
+    pages_str = str(pages_raw).strip() if pages_raw is not None else ""
+
     properties = {
         "书名": title_property(title),
         "出版社": rich_text_property(publisher),
         "作者": rich_text_property(author_str),
         "译者": rich_text_property(translator_str),
         "出版日期": date_property(pubdate),
+
+        # 下面三个字段名，必须和你 Notion 数据库里的列名完全一致
+        "出品方": rich_text_property(book.get("producer") or ""),
+        "封面类型": select_property(book.get("binding") or ""),
+        "页数": number_property(pages_str),
     }
 
     return properties
